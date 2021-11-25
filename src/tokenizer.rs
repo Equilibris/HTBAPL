@@ -26,7 +26,6 @@ pub enum Token {
     CloseCurlyBracket,
 
     NL, // \n
-    Spacer,
 
     Plus,            // +
     Minus,           // -
@@ -99,7 +98,6 @@ pub enum Token {
     At,             // @
     QuadColon,      // ⍠
 
-    HighMinus, // ¯
     LeftArrow, // ←
     Zilde,     // ⍬
     Hydrant,   // ⍎
@@ -121,7 +119,7 @@ pub fn tokenize(str: String) -> TokenStream {
     let mut in_numeric_literal = false;
     let mut in_string_literal = false;
 
-    let mut str_search_value = String::new();
+    let mut str_search_value = String::with_capacity(64);
 
     let mut line: usize = 0;
     let mut col: usize = 0;
@@ -129,8 +127,7 @@ pub fn tokenize(str: String) -> TokenStream {
     let mut last_char: char = '\0';
 
     for char in str.chars() {
-        if in_numeric_literal {
-        } else if in_string_literal {
+        if in_string_literal {
             if last_char == '\\' {
                 if char != '\\' {
                     str_search_value.push('\\');
@@ -296,8 +293,6 @@ pub fn tokenize(str: String) -> TokenStream {
                 out.push((Token::At, Loc::new(line, col)));
             } else if char == '⍠' {
                 out.push((Token::QuadColon, Loc::new(line, col)));
-            } else if char == '¯' {
-                out.push((Token::HighMinus, Loc::new(line, col)));
             } else if char == '←' {
                 out.push((Token::LeftArrow, Loc::new(line, col)));
             } else if char == '⍬' {
@@ -328,7 +323,17 @@ pub fn tokenize(str: String) -> TokenStream {
                 out.push((Token::CloseSquareBracket, Loc::new(line, col)));
             } else if char == ':' {
                 out.push((Token::Colon, Loc::new(line, col)));
-            // } else if char == 32 as char {
+            } else if ('0' <= char && char <= '9')
+                || char == 'u'
+                || char == 'i'
+                || char == 'f'
+                || char == '¯'
+                || char == 'J'
+                || char == 'E'
+                || char == '.'
+            {
+                in_numeric_literal = true;
+                str_search_value.push(char);
             } else {
                 println!("undefined char {} {}", char, char as u8);
             }
@@ -340,10 +345,20 @@ pub fn tokenize(str: String) -> TokenStream {
                 ));
                 str_search_value.clear();
             }
+            if in_numeric_literal {
+                in_numeric_literal = false;
+                out.push((
+                    Token::NumericLiteral(str_search_value.clone()),
+                    Loc::new(line, col),
+                ));
+                str_search_value.clear();
+            }
         }
         if char != '\n' {
-            col += 1;
+            line += 1;
+            col = 0;
         }
+        col += 1;
         last_char = char;
     }
 
@@ -425,7 +440,6 @@ pub fn destream(stream: TokenStream) -> String {
             Token::QuadDiamond => out.push('⌺'),
             Token::At => out.push('@'),
             Token::QuadColon => out.push('⍠'),
-            Token::HighMinus => out.push('¯'),
             Token::LeftArrow => out.push('←'),
             Token::Zilde => out.push('⍬'),
             Token::Hydrant => out.push('⍎'),
