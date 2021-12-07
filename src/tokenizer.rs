@@ -1,3 +1,5 @@
+use crate::{errors::BaseErr, numeric_literal::NumericLiteral};
+
 #[derive(Debug, Clone)]
 pub struct Loc {
     line: usize,
@@ -7,7 +9,7 @@ pub struct Loc {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     Identifier(String),
-    NumericLiteral(String),
+    NumericLiteral(NumericLiteral),
     StringLiteral(String),
 
     Comment(String), // ⍝
@@ -107,262 +109,297 @@ pub enum Token {
 }
 
 pub type TokenStream = Vec<(Token, Loc)>;
+type Stream<'a> = std::iter::Peekable<std::str::Chars<'a>>;
+
+fn numeric_literal_extractor<'a>(
+    stream: &mut Stream<'a>,
+    output: &mut TokenStream,
+    line: &mut usize,
+    col: &mut usize,
+) -> Result<(), BaseErr<'a>> {
+    let mut counting_cycle = String::new();
+    while let Some('0'..='9' | 'u' | 'f' | 'i' | 'E' | 'J' | '¯') = stream.peek() {
+        counting_cycle.push(stream.next().unwrap());
+        *col += 1;
+    }
+    output.push((
+        Token::NumericLiteral(counting_cycle.parse::<NumericLiteral>()?),
+        Loc {
+            col: *col,
+            line: *line,
+        },
+    ));
+
+    Ok(())
+}
 
 pub fn tokenize(str: String) -> TokenStream {
-    let mut out = Vec::with_capacity(str.len() / 2);
-
-    let mut in_identifier = false;
-    let mut in_numeric_literal = false;
-    let mut in_string_literal = false;
-
-    let mut str_search_value = String::with_capacity(64);
+    let mut output: TokenStream = Vec::with_capacity(str.len() / 2);
 
     let mut line: usize = 0;
     let mut col: usize = 0;
 
-    let mut last_char: char = '\0';
+    let mut stream: Stream = str.chars().peekable();
 
-    for char in str.chars() {
-        if in_string_literal {
-            if last_char == '\\' {
-                if char != '\\' {
-                    str_search_value.push('\\');
-                } else if char == 'n' {
-                    str_search_value.push('\'');
-                } else if char == '\'' {
-                    str_search_value.push('\n');
-                } else if char == 'r' {
-                    str_search_value.push('\r');
-                } else {
-                    panic!("un implemented escape character \\{}", char);
-                }
-            } else if char == '\'' {
-                out.push((
-                    Token::StringLiteral(str_search_value.clone()),
-                    Loc { line, col },
-                ));
-                str_search_value.clear();
-                in_string_literal = false;
-            } else if char != '\\' {
-                str_search_value.push(char);
-            }
-        } else if ('a' < char && char < 'z')
-            || ('A' < char && char < 'Z')
-            || (in_identifier && ('0' < char && char < '9'))
-        {
-            str_search_value.push(char);
-            in_identifier = true;
-        } else {
-            if char == '\n' {
-                out.push((Token::NL, Loc { line, col }));
-            } else if char == '\'' {
-                in_string_literal = true;
-            } else if char == '+' {
-                out.push((Token::Plus, Loc { line, col }));
-            } else if char == '-' {
-                out.push((Token::Minus, Loc { line, col }));
-            } else if char == '×' {
-                out.push((Token::Times, Loc { line, col }));
-            } else if char == '÷' {
-                out.push((Token::Divide, Loc { line, col }));
-            } else if char == '⌈' {
-                out.push((Token::Upstile, Loc { line, col }));
-            } else if char == '⌊' {
-                out.push((Token::Downstile, Loc { line, col }));
-            } else if char == '*' {
-                out.push((Token::Star, Loc { line, col }));
-            } else if char == '!' {
-                out.push((Token::ExclamationMark, Loc { line, col }));
-            } else if char == '|' {
-                out.push((Token::Stile, Loc { line, col }));
-            } else if char == '⍟' {
-                out.push((Token::Log, Loc { line, col }));
-            } else if char == '○' {
-                out.push((Token::Circle, Loc { line, col }));
-            } else if char == '⌹' {
-                out.push((Token::Domino, Loc { line, col }));
-            } else if char == '⊥' {
-                out.push((Token::UpTack, Loc { line, col }));
-            } else if char == '⊤' {
-                out.push((Token::DownTack, Loc { line, col }));
-            } else if char == '?' {
-                out.push((Token::QuestionMark, Loc { line, col }));
-            } else if char == '~' {
-                out.push((Token::Tilde, Loc { line, col }));
-            } else if char == '∧' {
-                out.push((Token::LogicalAND, Loc { line, col }));
-            } else if char == '∨' {
-                out.push((Token::LogicalOR, Loc { line, col }));
-            } else if char == '⍲' {
-                out.push((Token::LogicalNAND, Loc { line, col }));
-            } else if char == '⍱' {
-                out.push((Token::LogicalNOR, Loc { line, col }));
-            } else if char == '<' {
-                out.push((Token::LessThan, Loc { line, col }));
-            } else if char == '>' {
-                out.push((Token::GreaterThan, Loc { line, col }));
-            } else if char == '≤' {
-                out.push((Token::LessThanOrEqualTo, Loc { line, col }));
-            } else if char == '≥' {
-                out.push((Token::GreaterThanOrEqualTo, Loc { line, col }));
-            } else if char == '=' {
-                out.push((Token::Equal, Loc { line, col }));
-            } else if char == '≠' {
-                out.push((Token::NotEqual, Loc { line, col }));
-            } else if char == '≡' {
-                out.push((Token::EqualUnderbar, Loc { line, col }));
-            } else if char == '≢' {
-                out.push((Token::EqualUnderbarSlash, Loc { line, col }));
-            } else if char == '⍴' {
-                out.push((Token::Rho, Loc { line, col }));
-            } else if char == ',' {
-                out.push((Token::Comma, Loc { line, col }));
-            } else if char == '⍪' {
-                out.push((Token::CommaBar, Loc { line, col }));
-            } else if char == '⌽' {
-                out.push((Token::CircleStile, Loc { line, col }));
-            } else if char == '⊖' {
-                out.push((Token::CircleBar, Loc { line, col }));
-            } else if char == '⍉' {
-                out.push((Token::Transpose, Loc { line, col }));
-            } else if char == '↑' {
-                out.push((Token::UpArrow, Loc { line, col }));
-            } else if char == '↓' {
-                out.push((Token::DownArrow, Loc { line, col }));
-            } else if char == '⊂' {
-                out.push((Token::LeftShoe, Loc { line, col }));
-            } else if char == '⊆' {
-                out.push((Token::LeftShoeUnderbar, Loc { line, col }));
-            } else if char == '∊' {
-                out.push((Token::Epsilon, Loc { line, col }));
-            } else if char == '⌷' {
-                out.push((Token::Squad, Loc { line, col }));
-            } else if char == '⊃' {
-                out.push((Token::RightShoe, Loc { line, col }));
-            } else if char == '/' {
-                out.push((Token::Slash, Loc { line, col }));
-            } else if char == '⌿' {
-                out.push((Token::SlashBar, Loc { line, col }));
-            } else if char == '\\' {
-                out.push((Token::Backslash, Loc { line, col }));
-            } else if char == '⍀' {
-                out.push((Token::BackslashBar, Loc { line, col }));
-            } else if char == '∪' {
-                out.push((Token::DownShoe, Loc { line, col }));
-            } else if char == '∩' {
-                out.push((Token::UpShoe, Loc { line, col }));
-            } else if char == '⊣' {
-                out.push((Token::LeftTack, Loc { line, col }));
-            } else if char == '⊢' {
-                out.push((Token::RightTack, Loc { line, col }));
-            } else if char == '⍳' {
-                out.push((Token::Iota, Loc { line, col }));
-            } else if char == '⍸' {
-                out.push((Token::IotaUnderbar, Loc { line, col }));
-            } else if char == '⍷' {
-                out.push((Token::EpsilonUnderbar, Loc { line, col }));
-            } else if char == '⍋' {
-                out.push((Token::GradeUp, Loc { line, col }));
-            } else if char == '⍒' {
-                out.push((Token::GradeDown, Loc { line, col }));
-            } else if char == '¨' {
-                out.push((Token::Diaeresis, Loc { line, col }));
-            } else if char == '⍨' {
-                out.push((Token::TildeDiaeresis, Loc { line, col }));
-            } else if char == '⍣' {
-                out.push((Token::StarDiaeresis, Loc { line, col }));
-            } else if char == '.' {
-                out.push((Token::Dot, Loc { line, col }));
-            } else if char == '∘' {
-                out.push((Token::Jot, Loc { line, col }));
-            } else if char == '⌸' {
-                out.push((Token::QuadEqual, Loc { line, col }));
-            } else if char == '⍤' {
-                out.push((Token::JotDiaeresis, Loc { line, col }));
-            } else if char == '⍥' {
-                out.push((Token::CircleDieresis, Loc { line, col }));
-            } else if char == '⌺' {
-                out.push((Token::QuadDiamond, Loc { line, col }));
-            } else if char == '@' {
-                out.push((Token::At, Loc { line, col }));
-            } else if char == '⍠' {
-                out.push((Token::QuadColon, Loc { line, col }));
-            } else if char == '←' {
-                out.push((Token::LeftArrow, Loc { line, col }));
-            } else if char == '⍬' {
-                out.push((Token::Zilde, Loc { line, col }));
-            } else if char == '⍎' {
-                out.push((Token::Hydrant, Loc { line, col }));
-            } else if char == '⍕' {
-                out.push((Token::Thorn, Loc { line, col }));
-            } else if char == '⋄' {
-                out.push((Token::Diamond, Loc { line, col }));
-            } else if char == '∇' {
-                out.push((Token::Del, Loc { line, col }));
-            } else if char == '⍺' {
-                out.push((Token::Alpha, Loc { line, col }));
-            } else if char == '⍵' {
-                out.push((Token::Omega, Loc { line, col }));
-            } else if char == '{' {
-                out.push((Token::OpenCurlyBracket, Loc { line, col }));
-            } else if char == '}' {
-                out.push((Token::CloseCurlyBracket, Loc { line, col }));
-            } else if char == '(' {
-                out.push((Token::OpenRoundBracket, Loc { line, col }));
-            } else if char == ')' {
-                out.push((Token::CloseRoundBracket, Loc { line, col }));
-            } else if char == '[' {
-                out.push((Token::OpenSquareBracket, Loc { line, col }));
-            } else if char == ']' {
-                out.push((Token::CloseSquareBracket, Loc { line, col }));
-            } else if char == ':' {
-                out.push((Token::Colon, Loc { line, col }));
-            } else if ('0' <= char && char <= '9')
-                || char == 'u'
-                || char == 'i'
-                || char == 'f'
-                || char == '¯'
-                || char == 'J'
-                || char == 'E'
-                || char == '.'
-            {
-                in_numeric_literal = true;
-                str_search_value.push(char);
-            } else {
-                println!("undefined char {} {}", char, char as u8);
-            }
-            if in_identifier {
-                in_identifier = false;
-                out.push((
-                    Token::Identifier(str_search_value.clone()),
-                    Loc { line, col },
-                ));
-                str_search_value.clear();
-            }
-            if in_numeric_literal {
-                in_numeric_literal = false;
-                out.push((
-                    Token::NumericLiteral(str_search_value.clone()),
-                    Loc { line, col },
-                ));
-                str_search_value.clear();
-            }
-        }
-        if char != '\n' {
-            line += 1;
-            col = 0;
-        }
+    while let Some(token) = stream.peek() {
         col += 1;
-        last_char = char;
+        match *token {
+            '0'..='9' => {
+                numeric_literal_extractor(&mut stream, &mut output, &mut line, &mut col);
+            }
+            '\'' => {
+                in_string_literal = true;
+            }
+            _ => {
+                stream.next();
+            }
+            '\n' => {
+                output.push((Token::NL, Loc { line, col }));
+            }
+            '+' => {
+                output.push((Token::Plus, Loc { line, col }));
+            }
+            '-' => {
+                output.push((Token::Minus, Loc { line, col }));
+            }
+            '×' => {
+                output.push((Token::Times, Loc { line, col }));
+            }
+            '÷' => {
+                output.push((Token::Divide, Loc { line, col }));
+            }
+            '⌈' => {
+                output.push((Token::Upstile, Loc { line, col }));
+            }
+            '⌊' => {
+                output.push((Token::Downstile, Loc { line, col }));
+            }
+            '*' => {
+                output.push((Token::Star, Loc { line, col }));
+            }
+            '!' => {
+                output.push((Token::ExclamationMark, Loc { line, col }));
+            }
+            '|' => {
+                output.push((Token::Stile, Loc { line, col }));
+            }
+            '⍟' => {
+                output.push((Token::Log, Loc { line, col }));
+            }
+            '○' => {
+                output.push((Token::Circle, Loc { line, col }));
+            }
+            '⌹' => {
+                output.push((Token::Domino, Loc { line, col }));
+            }
+            '⊥' => {
+                output.push((Token::UpTack, Loc { line, col }));
+            }
+            '⊤' => {
+                output.push((Token::DownTack, Loc { line, col }));
+            }
+            '?' => {
+                output.push((Token::QuestionMark, Loc { line, col }));
+            }
+            '~' => {
+                output.push((Token::Tilde, Loc { line, col }));
+            }
+            '∧' => {
+                output.push((Token::LogicalAND, Loc { line, col }));
+            }
+            '∨' => {
+                output.push((Token::LogicalOR, Loc { line, col }));
+            }
+            '⍲' => {
+                output.push((Token::LogicalNAND, Loc { line, col }));
+            }
+            '⍱' => {
+                output.push((Token::LogicalNOR, Loc { line, col }));
+            }
+            '<' => {
+                output.push((Token::LessThan, Loc { line, col }));
+            }
+            '>' => {
+                output.push((Token::GreaterThan, Loc { line, col }));
+            }
+            '≤' => {
+                output.push((Token::LessThanOrEqualTo, Loc { line, col }));
+            }
+            '≥' => {
+                output.push((Token::GreaterThanOrEqualTo, Loc { line, col }));
+            }
+            '=' => {
+                output.push((Token::Equal, Loc { line, col }));
+            }
+            '≠' => {
+                output.push((Token::NotEqual, Loc { line, col }));
+            }
+            '≡' => {
+                output.push((Token::EqualUnderbar, Loc { line, col }));
+            }
+            '≢' => {
+                output.push((Token::EqualUnderbarSlash, Loc { line, col }));
+            }
+            '⍴' => {
+                output.push((Token::Rho, Loc { line, col }));
+            }
+            ',' => {
+                output.push((Token::Comma, Loc { line, col }));
+            }
+            '⍪' => {
+                output.push((Token::CommaBar, Loc { line, col }));
+            }
+            '⌽' => {
+                output.push((Token::CircleStile, Loc { line, col }));
+            }
+            '⊖' => {
+                output.push((Token::CircleBar, Loc { line, col }));
+            }
+            '⍉' => {
+                output.push((Token::Transpose, Loc { line, col }));
+            }
+            '↑' => {
+                output.push((Token::UpArrow, Loc { line, col }));
+            }
+            '↓' => {
+                output.push((Token::DownArrow, Loc { line, col }));
+            }
+            '⊂' => {
+                output.push((Token::LeftShoe, Loc { line, col }));
+            }
+            '⊆' => {
+                output.push((Token::LeftShoeUnderbar, Loc { line, col }));
+            }
+            '∊' => {
+                output.push((Token::Epsilon, Loc { line, col }));
+            }
+            '⌷' => {
+                output.push((Token::Squad, Loc { line, col }));
+            }
+            '⊃' => {
+                output.push((Token::RightShoe, Loc { line, col }));
+            }
+            '/' => {
+                output.push((Token::Slash, Loc { line, col }));
+            }
+            '⌿' => {
+                output.push((Token::SlashBar, Loc { line, col }));
+            }
+            '\\' => {
+                output.push((Token::Backslash, Loc { line, col }));
+            }
+            '⍀' => {
+                output.push((Token::BackslashBar, Loc { line, col }));
+            }
+            '∪' => {
+                output.push((Token::DownShoe, Loc { line, col }));
+            }
+            '∩' => {
+                output.push((Token::UpShoe, Loc { line, col }));
+            }
+            '⊣' => {
+                output.push((Token::LeftTack, Loc { line, col }));
+            }
+            '⊢' => {
+                output.push((Token::RightTack, Loc { line, col }));
+            }
+            '⍳' => {
+                output.push((Token::Iota, Loc { line, col }));
+            }
+            '⍸' => {
+                output.push((Token::IotaUnderbar, Loc { line, col }));
+            }
+            '⍷' => {
+                output.push((Token::EpsilonUnderbar, Loc { line, col }));
+            }
+            '⍋' => {
+                output.push((Token::GradeUp, Loc { line, col }));
+            }
+            '⍒' => {
+                output.push((Token::GradeDown, Loc { line, col }));
+            }
+            '¨' => {
+                output.push((Token::Diaeresis, Loc { line, col }));
+            }
+            '⍨' => {
+                output.push((Token::TildeDiaeresis, Loc { line, col }));
+            }
+            '⍣' => {
+                output.push((Token::StarDiaeresis, Loc { line, col }));
+            }
+            '.' => {
+                output.push((Token::Dot, Loc { line, col }));
+            }
+            '∘' => {
+                output.push((Token::Jot, Loc { line, col }));
+            }
+            '⌸' => {
+                output.push((Token::QuadEqual, Loc { line, col }));
+            }
+            '⍤' => {
+                output.push((Token::JotDiaeresis, Loc { line, col }));
+            }
+            '⍥' => {
+                output.push((Token::CircleDieresis, Loc { line, col }));
+            }
+            '⌺' => {
+                output.push((Token::QuadDiamond, Loc { line, col }));
+            }
+            '@' => {
+                output.push((Token::At, Loc { line, col }));
+            }
+            '⍠' => {
+                output.push((Token::QuadColon, Loc { line, col }));
+            }
+            '←' => {
+                output.push((Token::LeftArrow, Loc { line, col }));
+            }
+            '⍬' => {
+                output.push((Token::Zilde, Loc { line, col }));
+            }
+            '⍎' => {
+                output.push((Token::Hydrant, Loc { line, col }));
+            }
+            '⍕' => {
+                output.push((Token::Thorn, Loc { line, col }));
+            }
+            '⋄' => {
+                output.push((Token::Diamond, Loc { line, col }));
+            }
+            '∇' => {
+                output.push((Token::Del, Loc { line, col }));
+            }
+            '⍺' => {
+                output.push((Token::Alpha, Loc { line, col }));
+            }
+            '⍵' => {
+                output.push((Token::Omega, Loc { line, col }));
+            }
+            '{' => {
+                output.push((Token::OpenCurlyBracket, Loc { line, col }));
+            }
+            '}' => {
+                output.push((Token::CloseCurlyBracket, Loc { line, col }));
+            }
+            '(' => {
+                output.push((Token::OpenRoundBracket, Loc { line, col }));
+            }
+            ')' => {
+                output.push((Token::CloseRoundBracket, Loc { line, col }));
+            }
+            '[' => {
+                output.push((Token::OpenSquareBracket, Loc { line, col }));
+            }
+            ']' => {
+                output.push((Token::CloseSquareBracket, Loc { line, col }));
+            }
+            ':' => {
+                output.push((Token::Colon, Loc { line, col }));
+            }
+        }
     }
-    out.push((
-        Token::EOF,
-        Loc {
-            line: line + 1,
-            col: 0,
-        },
-    ));
-    out
+
+    output
 }
 
 pub fn destream(stream: TokenStream) -> String {
@@ -371,9 +408,14 @@ pub fn destream(stream: TokenStream) -> String {
     for (token, _) in stream {
         match token {
             Token::Identifier(s) => out.push_str(s.as_ref()),
-            Token::NumericLiteral(s) => out.push_str(s.as_ref()),
             Token::StringLiteral(s) => out.push_str(s.as_ref()),
             Token::Comment(s) => out.push_str(s.as_ref()),
+            Token::NumericLiteral(s) => {
+                if let Some('0'..='9' | 'u' | 'f' | 'i' | 'E' | 'J' | '¯') = out.chars().last() {
+                    out.push(' ');
+                }
+                out.push_str(s.to_string().as_ref());
+            }
 
             Token::Plus => out.push('+'),
             Token::Minus => out.push('-'),
@@ -472,7 +514,7 @@ mod tests {
         println!(
             "{:?}",
             destream(tokenize(normalize_apl_code(
-                "nDCube ← {v←⍵ ⋄ ⍺{⍺=1:v/⍵ ⋄ v/[⍺-1] (⍺-1) ∇ ⍵} (⍺/⍵) ⍴ ⍳⍵*⍺}".to_string(),
+                "nDCube ← {v←⍵ ⋄ ⍺{⍺=1u4:v/⍵ ⋄ v/[⍺-1] (⍺-1) ∇ ⍵} (⍺/⍵) ⍴ ⍳⍵*⍺}".to_string(),
             ),))
         );
 

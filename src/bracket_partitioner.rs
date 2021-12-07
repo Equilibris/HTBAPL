@@ -1,4 +1,7 @@
-use crate::tokenizer::{Loc, Token, TokenStream};
+use crate::{
+    errors::BaseErr,
+    tokenizer::{Loc, Token, TokenStream},
+};
 
 #[derive(Debug, Clone)]
 pub enum Partitioner {
@@ -117,12 +120,16 @@ fn process(
     Ok(())
 }
 
-pub fn tokenize_to_partition(token_stream: TokenStream) -> Result<PartitionStream, String> {
+pub fn tokenize_to_partition<'a>(
+    token_stream: TokenStream,
+) -> Result<PartitionStream, BaseErr<'a>> {
     let mut token_stream = token_stream.iter();
     let mut output = Vec::with_capacity(128);
 
     if let Err((token, loc)) = process(&mut token_stream, &mut output, Token::EOF, vec![]) {
-        Err(format!("Unexpected token {:?} at {:?}", token, loc))
+        Err(BaseErr::new(
+            "Unexpected token", // format!("Unexpected token {:?} at {:?}", token, loc).as_str() as &'a str,
+        ))
     } else {
         Ok(output)
     }

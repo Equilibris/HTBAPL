@@ -1,4 +1,6 @@
-#[derive(Debug, PartialEq)]
+use crate::errors::BaseErr;
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum NumericLiteral {
     Complex(f64, f64),
     Float(u8, f64),
@@ -12,21 +14,7 @@ pub enum NumericLiteral {
     Boolean(bool),
 }
 
-#[derive(Debug, PartialEq)]
-pub struct BaseErr {
-    reason: &'static str,
-    // TODO: explanation
-}
-
-impl BaseErr {
-    pub fn new(reason: &'static str) -> Self {
-        Self { reason }
-    }
-}
-
-// type BaseErr = ParseFloatError;
-
-fn parse_atomic_floating_point(s: &str) -> Result<f64, BaseErr> {
+fn parse_atomic_floating_point(s: &str) -> Result<f64, BaseErr<'static>> {
     let mut chars = s.chars();
     let sign = chars.next().unwrap();
 
@@ -43,7 +31,7 @@ fn parse_atomic_floating_point(s: &str) -> Result<f64, BaseErr> {
     }
 }
 
-fn parse_atomic_integer(s: &str) -> Result<i64, BaseErr> {
+fn parse_atomic_integer(s: &str) -> Result<i64, BaseErr<'static>> {
     let mut chars = s.chars();
     let sign = chars.next().unwrap();
 
@@ -60,14 +48,14 @@ fn parse_atomic_integer(s: &str) -> Result<i64, BaseErr> {
     }
 }
 
-fn parse_atomic_unsigned(s: &str) -> Result<u64, BaseErr> {
+fn parse_atomic_unsigned(s: &str) -> Result<u64, BaseErr<'static>> {
     match s.parse::<u64>() {
         Ok(v) => Ok(v),
         Err(_) => Err(BaseErr::new("invalid u64 value")),
     }
 }
 
-fn parse_exponentiated_float(s: &str) -> Result<f64, BaseErr> {
+fn parse_exponentiated_float(s: &str) -> Result<f64, BaseErr<'static>> {
     Ok(if let Some((a, b)) = s.split_once('E') {
         let a = parse_atomic_floating_point(a)?;
         let b = parse_atomic_integer(b)?;
@@ -76,7 +64,7 @@ fn parse_exponentiated_float(s: &str) -> Result<f64, BaseErr> {
         parse_atomic_floating_point(s)?
     })
 }
-fn parse_exponentiated_unsigned(s: &str) -> Result<u64, BaseErr> {
+fn parse_exponentiated_unsigned(s: &str) -> Result<u64, BaseErr<'static>> {
     Ok(if let Some((a, b)) = s.split_once('E') {
         let a = parse_atomic_unsigned(a)?;
         let b = parse_atomic_unsigned(b)?;
@@ -85,7 +73,7 @@ fn parse_exponentiated_unsigned(s: &str) -> Result<u64, BaseErr> {
         parse_atomic_unsigned(s)?
     })
 }
-fn parse_exponentiated_int(s: &str) -> Result<i64, BaseErr> {
+fn parse_exponentiated_int(s: &str) -> Result<i64, BaseErr<'static>> {
     Ok(if let Some((a, b)) = s.split_once('E') {
         let a = parse_atomic_integer(a)?;
         let b = parse_atomic_unsigned(b)?;
@@ -99,7 +87,7 @@ enum ExtractSignatureAndVolumeResult {
     Auto,
     Signature(char),
     SignatureAndVolume(char, u8),
-    Err(BaseErr),
+    Err(BaseErr<'static>),
 }
 
 fn extract_signature_and_volume_and_base(s: &str) -> (String, ExtractSignatureAndVolumeResult) {
@@ -151,11 +139,10 @@ fn extract_signature_and_volume_and_base(s: &str) -> (String, ExtractSignatureAn
 }
 
 impl std::str::FromStr for NumericLiteral {
-    type Err = BaseErr;
+    type Err = BaseErr<'static>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.contains('J') {
-            let (a, b) = s.split_once('J').unwrap();
+        if let Some((a, b)) = s.split_once('J') {
             Ok(NumericLiteral::Complex(
                 parse_exponentiated_float(a)?,
                 parse_exponentiated_float(b)?,
@@ -198,6 +185,21 @@ impl std::str::FromStr for NumericLiteral {
     }
 }
 
+impl ToString for NumericLiteral {
+    fn to_string(&self) -> String {
+        match *self {
+            NumericLiteral::Complex(a, b) => format!("{}J{}", a, b),
+            NumericLiteral::Float(size, n) => format!("{}f{}", n, size),
+            NumericLiteral::SysUint(n) => format!("{}u", n),
+            NumericLiteral::SysInt(n) => format!("{}i", n),
+            NumericLiteral::Uint(size, n) => format!("{}u{}", n, size),
+            NumericLiteral::Int(size, n) => format!("{}i{}", n, size),
+            NumericLiteral::Auto(n) => format!("{}", n),
+            NumericLiteral::Boolean(true) => "1b".to_string(),
+            NumericLiteral::Boolean(false) => "0b".to_string(),
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use crate::numeric_literal::BaseErr;
@@ -344,7 +346,7 @@ mod tests {
             NumericLiteral::Boolean(true),
             "2b".parse::<NumericLiteral>().unwrap()
         );
-        
+
         assert_eq!(
             NumericLiteral::Boolean(false),
             "0b".parse::<NumericLiteral>().unwrap()
