@@ -1,11 +1,7 @@
-#[derive(Debug, PartialEq)]
-pub struct BaseErr<'a> {
-    reason: &'a str,
-    // TODO: explanation
-}
+use thiserror::Error;
 
-impl<'a> BaseErr<'a> {
-    pub fn new(reason: &'a str) -> Self {
-        Self { reason }
-    }
+#[derive(Error, Debug)]
+pub enum Errors {
+    #[error("Unexpected token {0:?} at {1}")]
+    UnexpectedToken(crate::tokenizer::Token, crate::tokenizer::Loc),
 }

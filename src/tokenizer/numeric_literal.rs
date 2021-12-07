@@ -1,5 +1,3 @@
-use crate::errors::BaseErr;
-
 #[derive(Debug, PartialEq, Clone)]
 pub enum NumericLiteral {
     Complex(f64, f64),
@@ -14,48 +12,33 @@ pub enum NumericLiteral {
     Boolean(bool),
 }
 
-fn parse_atomic_floating_point(s: &str) -> Result<f64, BaseErr<'static>> {
+fn parse_atomic_floating_point(s: &str) -> anyhow::Result<f64> {
     let mut chars = s.chars();
     let sign = chars.next().unwrap();
 
     if sign == '¯' {
-        match chars.as_str().parse::<f64>() {
-            Ok(v) => Ok(-v),
-            Err(_) => Err(BaseErr::new("invalid f64 float value")),
-        }
+        Ok(-chars.as_str().parse::<f64>()?)
     } else {
-        match s.parse::<f64>() {
-            Ok(v) => Ok(v),
-            Err(_) => Err(BaseErr::new("invalid f64 value")),
-        }
+        Ok(s.parse::<f64>()?)
     }
 }
 
-fn parse_atomic_integer(s: &str) -> Result<i64, BaseErr<'static>> {
+fn parse_atomic_integer(s: &str) -> anyhow::Result<i64> {
     let mut chars = s.chars();
     let sign = chars.next().unwrap();
 
     if sign == '¯' {
-        match chars.as_str().parse::<i64>() {
-            Ok(v) => Ok(-v),
-            Err(_) => Err(BaseErr::new("invalid i64 value")),
-        }
+        Ok(-chars.as_str().parse::<i64>()?)
     } else {
-        match s.parse::<i64>() {
-            Ok(v) => Ok(v),
-            Err(_) => Err(BaseErr::new("invalid i64 value")),
-        }
+        Ok(s.parse::<i64>()?)
     }
 }
 
-fn parse_atomic_unsigned(s: &str) -> Result<u64, BaseErr<'static>> {
-    match s.parse::<u64>() {
-        Ok(v) => Ok(v),
-        Err(_) => Err(BaseErr::new("invalid u64 value")),
-    }
+fn parse_atomic_unsigned(s: &str) -> anyhow::Result<u64> {
+    Ok(s.parse::<u64>()?)
 }
 
-fn parse_exponentiated_float(s: &str) -> Result<f64, BaseErr<'static>> {
+fn parse_exponentiated_float(s: &str) -> anyhow::Result<f64> {
     Ok(if let Some((a, b)) = s.split_once('E') {
         let a = parse_atomic_floating_point(a)?;
         let b = parse_atomic_integer(b)?;
@@ -64,7 +47,7 @@ fn parse_exponentiated_float(s: &str) -> Result<f64, BaseErr<'static>> {
         parse_atomic_floating_point(s)?
     })
 }
-fn parse_exponentiated_unsigned(s: &str) -> Result<u64, BaseErr<'static>> {
+fn parse_exponentiated_unsigned(s: &str) -> anyhow::Result<u64> {
     Ok(if let Some((a, b)) = s.split_once('E') {
         let a = parse_atomic_unsigned(a)?;
         let b = parse_atomic_unsigned(b)?;
@@ -73,7 +56,7 @@ fn parse_exponentiated_unsigned(s: &str) -> Result<u64, BaseErr<'static>> {
         parse_atomic_unsigned(s)?
     })
 }
-fn parse_exponentiated_int(s: &str) -> Result<i64, BaseErr<'static>> {
+fn parse_exponentiated_int(s: &str) -> anyhow::Result<i64> {
     Ok(if let Some((a, b)) = s.split_once('E') {
         let a = parse_atomic_integer(a)?;
         let b = parse_atomic_unsigned(b)?;
@@ -87,10 +70,11 @@ enum ExtractSignatureAndVolumeResult {
     Auto,
     Signature(char),
     SignatureAndVolume(char, u8),
-    Err(BaseErr<'static>),
 }
 
-fn extract_signature_and_volume_and_base(s: &str) -> (String, ExtractSignatureAndVolumeResult) {
+fn extract_signature_and_volume_and_base(
+    s: &str,
+) -> anyhow::Result<(String, ExtractSignatureAndVolumeResult)> {
     use ExtractSignatureAndVolumeResult::*;
     let mut signature = None;
     let mut volume = String::new();
@@ -100,13 +84,13 @@ fn extract_signature_and_volume_and_base(s: &str) -> (String, ExtractSignatureAn
         if let Some(_) = signature {
             volume.push(char);
         } else if char == 'b' {
-            return (return_string, Signature('b'));
+            return Ok((return_string, Signature('b')));
         } else if char == 'd' {
-            return (return_string, SignatureAndVolume('f', 6));
+            return Ok((return_string, SignatureAndVolume('f', 6)));
         } else if char == 'h' {
-            return (return_string, SignatureAndVolume('f', 4));
+            return Ok((return_string, SignatureAndVolume('f', 4)));
         } else if char == 'c' {
-            return (return_string, SignatureAndVolume('c', 7));
+            return Ok((return_string, SignatureAndVolume('c', 7)));
         } else if char == 'f' {
             signature = Some('f');
         } else if char == 'i' {
@@ -119,36 +103,33 @@ fn extract_signature_and_volume_and_base(s: &str) -> (String, ExtractSignatureAn
     }
 
     if let Some(signature) = signature {
-        return (
+        return Ok((
             return_string,
             if signature == 'f' && volume.len() == 0 {
                 SignatureAndVolume('f', 5)
             } else if volume.len() == 0 {
                 Signature(signature)
             } else {
-                match volume.parse::<u8>() {
-                    Ok(volume) => SignatureAndVolume(signature, volume),
-                    _ => Err(BaseErr::new("Failed to parse volume")),
-                }
+                SignatureAndVolume(signature, volume.parse::<u8>()?)
             },
-        );
+        ));
     }
     // if (let Some('f') = signature ) && volume.len() == 0{}
 
-    (return_string, Auto)
+    Ok((return_string, Auto))
 }
 
 impl std::str::FromStr for NumericLiteral {
-    type Err = BaseErr<'static>;
+    type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> anyhow::Result<Self> {
         if let Some((a, b)) = s.split_once('J') {
             Ok(NumericLiteral::Complex(
                 parse_exponentiated_float(a)?,
                 parse_exponentiated_float(b)?,
             ))
         } else {
-            let (s, vol_sig_auto) = extract_signature_and_volume_and_base(s);
+            let (s, vol_sig_auto) = extract_signature_and_volume_and_base(s)?;
 
             match vol_sig_auto {
                 ExtractSignatureAndVolumeResult::Auto => {
@@ -179,7 +160,6 @@ impl std::str::FromStr for NumericLiteral {
                         _ => panic!("Un implemented literal"),
                     }
                 }
-                ExtractSignatureAndVolumeResult::Err(e) => Err(e),
             }
         }
     }
@@ -202,8 +182,6 @@ impl ToString for NumericLiteral {
 }
 #[cfg(test)]
 mod tests {
-    use crate::numeric_literal::BaseErr;
-
     use super::NumericLiteral;
     #[test]
     fn it_parses_integer_complex() {
@@ -287,10 +265,10 @@ mod tests {
             NumericLiteral::Uint(3, 12330u64),
             "1233E1u3".parse::<NumericLiteral>().unwrap()
         );
-        assert_eq!(
-            BaseErr::new("invalid u64 value"),
-            "1233E¯2u3".parse::<NumericLiteral>().unwrap_err()
-        );
+        // assert_eq!(
+        //     anyhow::Error::new("invalid u64 value"),
+        //     "1233E¯2u3".parse::<NumericLiteral>().unwrap_err()
+        // );
     }
 
     #[test]
@@ -307,10 +285,10 @@ mod tests {
             NumericLiteral::Int(3, 12330i64),
             "1233E1i3".parse::<NumericLiteral>().unwrap()
         );
-        assert_eq!(
-            BaseErr::new("invalid u64 value"),
-            "1233E¯2i3".parse::<NumericLiteral>().unwrap_err()
-        );
+        // assert_eq!(
+        //     anyhow::Error::new("invalid u64 value"),
+        //     "1233E¯2i3".parse::<NumericLiteral>().unwrap_err()
+        // );
         assert_eq!(
             NumericLiteral::Int(4, -123400i64),
             "¯1234E2i4".parse::<NumericLiteral>().unwrap()
